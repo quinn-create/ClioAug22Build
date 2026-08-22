@@ -1,0 +1,38 @@
+[project]
+name = "clio-aug22-build"
+version = "0.1.0"
+description = "Production MCP server for Clio Manage (ClioAug22Build)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Quinn Rodriguez Law" }]
+dependencies = [
+    "mcp>=1.9.0",
+    "fastmcp>=2.9.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "uvicorn>=0.32.0",
+    "starlette>=0.40.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+]
+
+[project.scripts]
+clio-aug22-build = "clio_aug22_build.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["clio_aug22_build*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
