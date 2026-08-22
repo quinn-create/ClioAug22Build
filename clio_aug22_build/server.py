@@ -10,7 +10,7 @@ from starlette.responses import HTMLResponse, JSONResponse, Response
 
 from clio_aug22_build import __version__
 from clio_aug22_build.config import Settings, get_settings
-from clio_aug22_build.dashboard import TOOL_CATALOG, render_dashboard
+from clio_aug22_build.dashboard import TOOL_CATALOG, render_dashboard, render_oauth_page
 from clio_aug22_build.logging_setup import setup_logging
 from clio_aug22_build.providers.registry import build_provider
 from clio_aug22_build.providers.clio.tools import register_clio_tools
@@ -31,7 +31,7 @@ RULES:
 8. If a GET looks empty, you forgot fields= — specialized tools already send a default field set.
 """.strip()
 
-OPEN_PATHS = {"/", "/health", "/ready", "/favicon.ico"}
+OPEN_PATHS = {"/", "/health", "/ready", "/favicon.ico", "/oauth"}
 
 
 class BearerAuthMiddleware(BaseHTTPMiddleware):
@@ -109,6 +109,78 @@ def _register_http_routes(mcp: FastMCP, settings: Settings, provider: Any) -> No
                 }
             )
         )
+
+    @mcp.custom_route("/oauth", methods=["GET", "POST"])
+    async def oauth(request: Request) -> HTMLResponse:
+        approval = "https://app.clio.com/oauth/approval"
+        if request.method == "GET":
+            return HTMLResponse(
+                render_oauth_page(client_id=settings.clio_client_id or "")
+            )
+        form = await request.form()
+        client_id = str(form.get("client_id") or "").strip()
+        client_secret = str(form.get("client_secret") or "").strip()
+        code = str(form.get("code") or "").strip()
+        if not (client_id and client_secret and code):
+            return HTMLResponse(
+                render_oauth_page(
+                    client_id=client_id,
+                    code=code,
+                    error="Client ID, Client Secret, and authorization code are all required.",
+                ),
+                status_code=400,
+            )
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as http:
+                resp = await http.post(
+                    f"{settings.clio_root}/oauth/token",
+                    data={
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "grant_type": "authorization_code",
+                        "code": code,
+                        "redirect_uri": approval,
+                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+        except Exception:
+            logger.exception("Clio token exchange failed")
+            return HTMLResponse(
+                render_oauth_page(
+                    client_id=client_id,
+                    code=code,
+                    error="Could not reach Clio. Try again in a minute.",
+                ),
+                status_code=502,
+            )
+        payload = {}
+        try:
+            payload = resp.json()
+        except Exception:
+            payload = {}
+        refresh = str(payload.get("refresh_token") or "")
+        if resp.status_code >= 400 or not refresh:
+            logger.warning("Clio token exchange HTTP %s", resp.status_code)
+            detail = payload.get("error_description") or payload.get("error") or f"HTTP {resp.status_code}"
+            return HTMLResponse(
+                render_oauth_page(
+                    client_id=client_id,
+                    code=code,
+                    error=f"Clio rejected the exchange: {detail}",
+                ),
+                status_code=400,
+            )
+        logger.info("Clio refresh token issued")
+        return HTMLResponse(
+            render_oauth_page(
+                client_id=client_id,
+                refresh_token=refresh,
+                access_note="Access token is short-lived; the server refreshes it automatically. Save only the refresh token.",
+            )
+        )
+
 
 
 def run() -> None:
