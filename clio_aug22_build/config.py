@@ -1,10 +1,23 @@
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _running_on_railway() -> bool:
+    return any(
+        os.getenv(name)
+        for name in (
+            "RAILWAY_ENVIRONMENT",
+            "RAILWAY_ENVIRONMENT_ID",
+            "RAILWAY_PROJECT_ID",
+            "RAILWAY_SERVICE_ID",
+        )
+    )
 
 
 class Settings(BaseSettings):
@@ -29,6 +42,26 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     log_level: str = "INFO"
+
+    @field_validator("mcp_transport", mode="before")
+    @classmethod
+    def _normalize_transport(cls, value: object) -> object:
+        if value is None:
+            return "stdio"
+        text = str(value).strip().lower()
+        if text in ("", "stdio"):
+            return "stdio"
+        if text in ("http", "streamable-http", "streamable_http", "sse"):
+            return "http" if text != "streamable-http" else "streamable-http"
+        return value
+
+    @model_validator(mode="after")
+    def _http_on_railway(self) -> "Settings":
+        # Railway health checks need /health. Never start stdio in the cloud.
+        if _running_on_railway():
+            self.mcp_transport = "http"
+            self.host = "0.0.0.0"
+        return self
 
     @property
     def clio_root(self) -> str:
