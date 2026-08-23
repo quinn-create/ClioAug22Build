@@ -134,10 +134,11 @@ class ClioClient:
 
             headers = {
                 "Authorization": f"Bearer {token}",
-                "X-API-VERSION": self.settings.clio_api_version,
                 "User-Agent": USER_AGENT,
                 "Accept": "application/json",
             }
+            if self.settings.clio_api_version:
+                headers["X-API-VERSION"] = self.settings.clio_api_version
             if json_body is not None:
                 headers["Content-Type"] = "application/json"
 

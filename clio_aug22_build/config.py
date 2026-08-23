@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     clio_client_secret: str = ""
     clio_refresh_token: str = ""
     clio_base_url: str = Field(default="https://app.clio.com")
-    clio_api_version: str = Field(default="4.0.0")
+    clio_api_version: str = Field(default="")
 
     provider: Literal["clio", "mycase"] = "clio"
 
