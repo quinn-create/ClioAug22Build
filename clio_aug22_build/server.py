@@ -12,6 +12,13 @@ from clio_aug22_build import __version__
 from clio_aug22_build.config import Settings, get_settings
 from clio_aug22_build.dashboard import TOOL_CATALOG, render_dashboard, render_oauth_page
 from clio_aug22_build.logging_setup import setup_logging
+from clio_aug22_build.mcp_oauth import (
+    authorize_get,
+    authorize_post,
+    token_post,
+    well_known_authorization_server,
+    well_known_protected_resource,
+)
 from clio_aug22_build.providers.registry import build_provider
 from clio_aug22_build.providers.clio.tools import register_clio_tools
 
@@ -41,7 +48,12 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
         path = request.url.path
-        if path in OPEN_PATHS or path.startswith("/health"):
+        if (
+            path in OPEN_PATHS
+            or path.startswith("/health")
+            or path.startswith("/mcp-auth")
+            or path.startswith("/.well-known")
+        ):
             return await call_next(request)
         if not self.api_key:
             return await call_next(request)
@@ -180,6 +192,30 @@ def _register_http_routes(mcp: FastMCP, settings: Settings, provider: Any) -> No
                 access_note="Access token is short-lived; the server refreshes it automatically. Save only the refresh token.",
             )
         )
+
+    @mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET"])
+    async def oauth_as(_request: Request) -> JSONResponse:
+        return well_known_authorization_server(_request)
+
+    @mcp.custom_route("/.well-known/oauth-protected-resource", methods=["GET"])
+    async def oauth_pr(_request: Request) -> JSONResponse:
+        return well_known_protected_resource(_request)
+
+    @mcp.custom_route("/.well-known/oauth-protected-resource/mcp", methods=["GET"])
+    async def oauth_pr_mcp(_request: Request) -> JSONResponse:
+        return well_known_protected_resource(_request)
+
+    @mcp.custom_route("/mcp-auth/authorize", methods=["GET"])
+    async def mcp_authorize_get(request: Request) -> Response:
+        return await authorize_get(request)
+
+    @mcp.custom_route("/mcp-auth/authorize", methods=["POST"])
+    async def mcp_authorize_post(request: Request) -> Response:
+        return await authorize_post(request, settings)
+
+    @mcp.custom_route("/mcp-auth/token", methods=["POST"])
+    async def mcp_token(request: Request) -> Response:
+        return await token_post(request)
 
 
 
